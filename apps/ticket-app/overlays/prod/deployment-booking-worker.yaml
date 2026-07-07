@@ -9,8 +9,6 @@ metadata:
     app.kubernetes.io/part-of: team5-ticket
 spec:
   # replicas 명시 안 함 → KEDA ScaledObject가 min~max로 관리.
-  # ArgoCD selfHeal이 replicas를 되돌리지 않게 services Application에
-  # ignoreDifferences(/spec/replicas) 추가 권장 (PR 설명에 별도 표기).
   selector:
     matchLabels:
       app.kubernetes.io/name: booking-worker
@@ -21,34 +19,38 @@ spec:
         app.kubernetes.io/name: booking-worker
         app.kubernetes.io/part-of: team5-ticket
     spec:
-      serviceAccountName: ticket-service        # SQS IRSA (role annotation은 SA에서 담당자 확정)
+      serviceAccountName: ticket-service
       containers:
         - name: booking-worker
-          image: ticket-service                 # api와 동일 이미지, 프로파일로 역할 분리
+          image: ticket-service
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 8080               # actuator 메트릭(/actuator/prometheus) 노출용
+              containerPort: 8080
           envFrom:
             - secretRef:
                 name: ticket-app-secret
           env:
             - name: SPRING_PROFILES_ACTIVE
-              value: prod,worker                # worker 프로파일 = @SqsListener 활성
+              value: prod,worker
             - name: SPRING_CLOUD_AWS_REGION_STATIC
               value: ap-northeast-2
             - name: SPRING_DATASOURCE_URL
               value: jdbc:mysql://team5-prod-rds.cx482c6a63zp.ap-northeast-2.rds.amazonaws.com:3306/ticketing?useUnicode=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+            # SQS 리스너 동시성 — 커스텀 factory가 프로퍼티 바인딩 무시하므로
+            # 코드(AwsSqsConfig)에서 처리. env는 참고용 미사용.
           readinessProbe:
             httpGet: { path: /actuator/health/readiness, port: http }
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 6
+            timeoutSeconds: 3              # 1(기본)→3. CPU 포화 시 probe 여유 (503 방지)
           livenessProbe:
             httpGet: { path: /actuator/health/liveness, port: http }
             initialDelaySeconds: 60
             periodSeconds: 20
             failureThreshold: 3
+            timeoutSeconds: 3              # 1→3
           resources:
-            requests: { cpu: 250m, memory: 512Mi }
-            limits:   { cpu: "1",  memory: 1Gi }
+            requests: { cpu: "1",   memory: 1Gi }    # 250m→1, 512Mi→1Gi
+            limits:   { cpu: "3",   memory: 2Gi }    # 1→3코어, 1→2Gi
