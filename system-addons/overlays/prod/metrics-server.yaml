@@ -1,6 +1,12 @@
 # metrics-server — HPA가 Pod CPU/메모리 사용률을 읽기 위한 필수 애드온.
 # 없으면 HPA TARGETS가 <unknown> 으로 떠서 스케일 판단 자체를 못 함.
 # (EKS는 기본 미설치라 직접 넣어야 함. KEDA/YACE와 동일한 Application 패턴.)
+#
+# ⚠️ 2026-07-07: 고부하(1만 VU) 시 metrics-server가 리소스 부족으로 뻗어
+#    HPA가 CPU를 못 읽음(FailedGetResourceMetric) → ticket-service 스케일 마비 → 503.
+#    "관측 인프라가 제어 경로에 있으면 단일 장애점"(KEDA-Prometheus와 동일 구조).
+#    HPA는 metrics-server 의존을 제거할 수 없으므로 metrics-server 자체를 강화:
+#    리소스 상향(limits 추가) + replica 2(HA).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -8,7 +14,6 @@ metadata:
   namespace: argocd
 spec:
   project: default
-
   source:
     repoURL: https://kubernetes-sigs.github.io/metrics-server/
     chart: metrics-server
@@ -19,15 +24,18 @@ spec:
           # EKS의 kubelet serving 인증서가 cluster CA로 서명되지 않아
           # metrics-server가 kubelet에 TLS 연결 못 하는 문제 방지 (EKS 필수)
           - --kubelet-insecure-tls
+        # HA — 고부하 시 단일 파드가 뻗으면 HPA 마비. replica 2로 이중화 (2026-07-07)
+        replicas: 2
         resources:
           requests:
-            cpu: 50m
-            memory: 64Mi
-
+            cpu: 100m          # 50m → 100m (고부하 metrics 쿼리 폭증 대응)
+            memory: 200Mi      # 64Mi → 200Mi (OOM 방지)
+          limits:
+            cpu: 500m          # limit 신규 추가
+            memory: 500Mi      # limit 신규 추가 (없으면 노드 압박 시 불안정)
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
-
   syncPolicy:
     automated:
       prune: true
