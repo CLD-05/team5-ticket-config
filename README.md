@@ -1,3 +1,7 @@
+* 📦 **App 레포** : [team5-ticket-app](https://github.com/CLD-05/team5-ticket-app)
+* ⚙️ **Config 레포** : [team5-ticket-config](https://github.com/CLD-05/team5-ticket-config)
+* 🛠️ **Infra 레포** : [team5-ticket-infra](https://github.com/CLD-05/team5-ticket-infra)
+
 # Team5 Ticket Config 
 > GitOps & Kubernetes Configuration Repository  
 > ArgoCD 및 Kustomize 기반으로 EKS 클러스터에 배포되는 애플리케이션 Manifest, System Add-on, 오토스케일링 및 관측성 리소스를 선언적으로 관리하는 Config 저장소입니다.
